@@ -2,11 +2,16 @@ const { ApiClient } = require("../src/apiClient");
 
 const logger = () => {};
 
-function mockFetch(status, body, isJson = true) {
+function mockFetch(status, body, { isJson = true } = {}) {
+  const textBody = typeof body === "string" ? body : JSON.stringify(body);
   global.fetch = jest.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
+    headers: {
+      get: (name) => (name.toLowerCase() === "content-type" ? (isJson ? "application/json" : "text/plain") : null),
+    },
     json: isJson ? () => Promise.resolve(body) : undefined,
+    text: () => Promise.resolve(textBody),
     arrayBuffer: !isJson ? () => Promise.resolve(body) : undefined,
   });
 }
@@ -30,10 +35,12 @@ describe("ApiClient.listVoices", () => {
   });
 
   it("throws on non-ok response", async () => {
-    mockFetch(500, {});
+    mockFetch(500, { detail: "server unavailable" });
 
     const client = new ApiClient({ endpoint: "http://localhost:8880", apiKey: "test", logger });
-    await expect(client.listVoices()).rejects.toThrow("Failed to list voices: 500");
+    await expect(client.listVoices()).rejects.toThrow(
+      "Voice list request failed at http://localhost:8880/v1/audio/voices: HTTP 500 - server unavailable"
+    );
   });
 
   it("returns empty array when voices key is missing", async () => {
@@ -123,14 +130,12 @@ describe("ApiClient.synthesize", () => {
   });
 
   it("throws on non-ok response", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 422,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-    });
+    mockFetch(422, { detail: "voice not found" });
 
     const client = new ApiClient({ endpoint: "http://localhost:8880", apiKey: "key", logger });
-    await expect(client.synthesize("hi")).rejects.toThrow("TTS request failed: 422");
+    await expect(client.synthesize("hi")).rejects.toThrow(
+      "Speech synthesis request failed at http://localhost:8880/v1/audio/speech: HTTP 422 - voice not found"
+    );
   });
 
   it("strips trailing slash from endpoint", async () => {
@@ -145,5 +150,31 @@ describe("ApiClient.synthesize", () => {
     await client.synthesize("hi");
 
     expect(global.fetch.mock.calls[0][0]).toBe("http://localhost:8880/v1/audio/speech");
+  });
+
+  it("includes network failure details in synthesis errors", async () => {
+    global.fetch = jest.fn().mockRejectedValue(
+      Object.assign(new Error("fetch failed"), {
+        cause: {
+          code: "ECONNREFUSED",
+          message: "connect ECONNREFUSED 127.0.0.1:8880",
+        },
+      })
+    );
+
+    const client = new ApiClient({ endpoint: "http://localhost:8880", apiKey: "key", logger });
+    await expect(client.synthesize("hi")).rejects.toThrow(
+      "Speech synthesis request failed at http://localhost:8880/v1/audio/speech: ECONNREFUSED - connect ECONNREFUSED 127.0.0.1:8880 - fetch failed"
+    );
+  });
+
+  it("returns connection test details", async () => {
+    mockFetch(200, { voices: ["af_heart"] });
+
+    const client = new ApiClient({ endpoint: "http://localhost:8880", apiKey: "test", logger });
+    await expect(client.testConnection()).resolves.toEqual({
+      endpoint: "http://localhost:8880",
+      voicesCount: 1,
+    });
   });
 });
