@@ -2,7 +2,8 @@ const { ApiClient } = require("../src/apiClient");
 
 const logger = () => {};
 
-function mockFetch(status, body, { isJson = true } = {}) {
+function mockFetch(status, body, options = {}) {
+  const { isJson = true } = options;
   global.fetch = jest.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
