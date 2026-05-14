@@ -1,3 +1,5 @@
+const { createReadStream } = require("node:fs");
+const path = require("node:path");
 const { Readable } = require("node:stream");
 const {
   joinVoiceChannel,
@@ -18,6 +20,7 @@ const DEBUG_LOG_LIMIT = 300;
 const AUTO_DISCONNECT_MS = 5 * 60 * 1000;
 const MIN_SPEED = 0.25;
 const MAX_SPEED = 4.0;
+const TEST_AUDIO_PATH = path.join(__dirname, "test.wav");
 
 class TtsBot {
   constructor({ client, apiClient, defaultVoice = DEFAULT_VOICE, defaultSpeed = DEFAULT_SPEED, defaultLang = DEFAULT_LANG }) {
@@ -99,6 +102,9 @@ class TtsBot {
         break;
       case "say":
         await this.#handleSay(message, args);
+        break;
+      case "testaudio":
+        await this.#handleTestAudio(message);
         break;
       case "queue":
         await this.#handleQueue(message);
@@ -223,6 +229,34 @@ class TtsBot {
       this.log(`Failed to synthesize text in guild ${message.guildId} via ${endpoint}: ${error.message}`);
       await message.reply(`Failed to synthesize speech via **${endpoint}**: ${error.message}`);
     }
+  }
+
+  async #handleTestAudio(message) {
+    const voiceChannel = message.member?.voice?.channel;
+    if (!voiceChannel) {
+      await message.reply("Join a voice channel first.");
+      return;
+    }
+
+    let connection = getVoiceConnection(message.guildId);
+    if (!connection) {
+      await this.#handleJoin(message);
+      connection = getVoiceConnection(message.guildId);
+    }
+
+    if (!connection) {
+      await message.reply("Failed to connect to the voice channel.");
+      return;
+    }
+
+    const state = this.#getGuildState(message.guildId);
+    const resource = createAudioResource(createReadStream(TEST_AUDIO_PATH), {
+      inputType: StreamType.Arbitrary,
+    });
+
+    state.player.play(resource);
+    this.log(`Playing test audio in guild ${message.guildId} from ${TEST_AUDIO_PATH}`);
+    await message.reply("Playing test audio.");
   }
 
   async #handleQueue(message) {
