@@ -14,7 +14,14 @@ function parseMentionCommand(content, botId) {
     return null;
   }
 
-  const normalized = body.startsWith("!") ? body.slice(1) : body;
+  if (!body.startsWith("!")) {
+    return {
+      command: "say",
+      args: body,
+    };
+  }
+
+  const normalized = body.slice(1);
   const [commandRaw, ...argParts] = normalized.split(/\s+/);
   if (!commandRaw) {
     return null;

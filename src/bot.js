@@ -157,13 +157,23 @@ class TtsBot {
       return;
     }
 
+    const connection = getVoiceConnection(guildId);
+    if (connection) {
+      const channel = connection.joinConfig.channelId;
+      const voiceChannel = newState.guild.channels.cache.get(channel);
+
+      if (voiceChannel && voiceChannel.members.size === 1) {
+        this.log(`Leaving voice channel in guild ${guildId} as it is empty.`);
+        connection.destroy();
+      }
+    }
+
     this.#evaluateAutoDisconnect(guildId);
   }
 
   async #handleJoin(message) {
     const voiceChannel = message.member?.voice?.channel;
     if (!voiceChannel) {
-      await message.reply("Join a voice channel first.");
       return;
     }
 
@@ -215,17 +225,14 @@ class TtsBot {
       await entersState(connection, VoiceConnectionStatus.Ready, VOICE_CONNECTION_TIMEOUT_MS);
       this.log(`Voice connection ready for guild ${message.guildId}`);
       this.#evaluateAutoDisconnect(message.guildId);
-      await message.reply(`Joined **${voiceChannel.name}**.`);
     } catch (error) {
       this.log(`Voice connection failed to become ready for guild ${message.guildId}: ${error.message}`);
       connection.destroy();
-      await message.reply(`Joined **${voiceChannel.name}**, but the voice connection did not become ready.`);
     }
   }
 
   async #handleLeave(message) {
     this.#disconnectFromGuild(message.guildId, "manual leave command");
-    await message.reply("Disconnected.");
   }
 
   async #handleSay(message, text) {
