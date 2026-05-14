@@ -13,13 +13,16 @@ const { parseMentionCommand } = require("./commandParser");
 const { AudioCache } = require("./audioCache");
 const { DebugLog } = require("./debugLog");
 
+const DEBUG_LOG_LIMIT = 300;
+const AUTO_DISCONNECT_MS = 5 * 60 * 1000;
+
 class TtsBot {
   constructor({ client, apiClient }) {
     this.client = client;
     this.apiClient = apiClient;
     this.guildStates = new Map();
     this.cache = new AudioCache(32);
-    this.debugLog = new DebugLog(300);
+    this.debugLog = new DebugLog(DEBUG_LOG_LIMIT);
 
     this.client.on("ready", () => this.#onReady());
     this.client.on("messageCreate", (message) => this.#onMessage(message));
@@ -327,7 +330,7 @@ class TtsBot {
       if (remainingMembers === 0) {
         this.#disconnectFromGuild(guildId, "auto-disconnect after empty channel");
       }
-    }, 5 * 60 * 1000);
+    }, AUTO_DISCONNECT_MS);
   }
 
   #disconnectFromGuild(guildId, reason) {

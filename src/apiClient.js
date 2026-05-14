@@ -22,6 +22,7 @@ class ApiClient {
     }
 
     const payload = await response.json();
+    // Accept common field names to keep compatibility with existing API implementations.
     this.sessionToken =
       payload.sessionToken ??
       payload.session_token ??
@@ -51,6 +52,7 @@ class ApiClient {
     }
 
     const payload = await response.json();
+    // Accept common field names to keep compatibility with existing API implementations.
     const audioBase64 =
       payload.audioBase64 ??
       payload.audio_base64 ??
