@@ -15,7 +15,7 @@ class ApiClient {
   }
 
   setEndpoint(endpoint) {
-    const normalized = String(endpoint ?? "").trim().replace(/\/+$/, "");
+    const normalized = String(endpoint ?? "").trim().replace(/\/$/, "");
     if (!normalized) {
       throw new Error("API endpoint is required.");
     }
