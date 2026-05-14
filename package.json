@@ -1,0 +1,21 @@
+{
+  "name": "discord-bot-tts",
+  "version": "1.0.0",
+  "description": "Discord bot text to speech",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jest --runInBand",
+    "start": "node src/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@discordjs/voice": "^0.18.0",
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2"
+  }
+}
