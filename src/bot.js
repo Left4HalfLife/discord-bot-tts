@@ -10,6 +10,8 @@ const {
   NoSubscriberBehavior,
   getVoiceConnection,
   demuxProbe,
+  entersState,
+  VoiceConnectionStatus,
 } = require("@discordjs/voice");
 const { parseMentionCommand } = require("./commandParser");
 const { AudioCache } = require("./audioCache");
@@ -21,6 +23,7 @@ const AUTO_DISCONNECT_MS = 5 * 60 * 1000;
 const MIN_SPEED = 0.25;
 const MAX_SPEED = 4.0;
 const TEST_AUDIO_PATH = path.join(__dirname, "test.wav");
+const VOICE_CONNECTION_TIMEOUT_MS = 20_000;
 
 class TtsBot {
   constructor({ client, apiClient, defaultVoice = DEFAULT_VOICE, defaultSpeed = DEFAULT_SPEED, defaultLang = DEFAULT_LANG }) {
@@ -64,6 +67,10 @@ class TtsBot {
         speed: this.defaultSpeed,
         lang: this.defaultLang,
       };
+
+      player.on("stateChange", (oldState, newState) => {
+        this.log(`Audio player state change for guild ${guildId}: ${oldState.status} -> ${newState.status}`);
+      });
 
       player.on(AudioPlayerStatus.Idle, () => {
         this.#playNext(guildId).catch((error) => {
@@ -158,6 +165,11 @@ class TtsBot {
       return;
     }
 
+    const permissions = voiceChannel.permissionsFor(this.client.user);
+    this.log(
+      `Voice channel permissions for guild ${message.guildId}: connect=${permissions?.has("Connect") ?? false} speak=${permissions?.has("Speak") ?? false} useVAD=${permissions?.has("UseVAD") ?? false}`
+    );
+
     const state = this.#getGuildState(message.guildId);
 
     const connection = joinVoiceChannel({
@@ -167,7 +179,20 @@ class TtsBot {
       selfDeaf: false,
     });
 
+    connection.on("stateChange", (oldState, newState) => {
+      this.log(`Voice connection state change in guild ${message.guildId}: ${oldState.status} -> ${newState.status}`);
+    });
+
     connection.subscribe(state.player);
+    this.log(`Subscribed audio player to voice connection in guild ${message.guildId}`);
+
+    try {
+      await entersState(connection, VoiceConnectionStatus.Ready, VOICE_CONNECTION_TIMEOUT_MS);
+      this.log(`Voice connection ready for guild ${message.guildId}`);
+    } catch (error) {
+      this.log(`Voice connection failed to become ready for guild ${message.guildId}: ${error.message}`);
+    }
+
     this.log(`Joined voice channel ${voiceChannel.id} in guild ${message.guildId}`);
 
     this.#evaluateAutoDisconnect(message.guildId);
@@ -248,6 +273,8 @@ class TtsBot {
       await message.reply("Failed to connect to the voice channel.");
       return;
     }
+
+    this.log(`Current voice connection status in guild ${message.guildId}: ${connection.state.status}`);
 
     const state = this.#getGuildState(message.guildId);
     const resource = createAudioResource(createReadStream(TEST_AUDIO_PATH), {
@@ -450,9 +477,11 @@ class TtsBot {
 
     try {
       const probed = await demuxProbe(stream);
+      this.log(`Demux probe succeeded for guild ${guildId}: inputType=${probed.type}`);
       const resource = createAudioResource(probed.stream, { inputType: probed.type });
       state.player.play(resource);
-    } catch {
+    } catch (error) {
+      this.log(`Demux probe failed for guild ${guildId}: ${error.message}`);
       const resource = createAudioResource(Readable.from(nextItem.audioBuffer), {
         inputType: StreamType.Arbitrary,
       });
