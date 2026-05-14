@@ -12,6 +12,7 @@ const {
   demuxProbe,
   entersState,
   VoiceConnectionStatus,
+  VoiceConnectionDisconnectReason,
 } = require("@discordjs/voice");
 const { parseMentionCommand } = require("./commandParser");
 const { AudioCache } = require("./audioCache");
@@ -24,6 +25,7 @@ const MIN_SPEED = 0.25;
 const MAX_SPEED = 4.0;
 const TEST_AUDIO_PATH = path.join(__dirname, "test.wav");
 const VOICE_CONNECTION_TIMEOUT_MS = 20_000;
+const VOICE_RECONNECT_TIMEOUT_MS = 5_000;
 
 class TtsBot {
   constructor({ client, apiClient, defaultVoice = DEFAULT_VOICE, defaultSpeed = DEFAULT_SPEED, defaultLang = DEFAULT_LANG }) {
@@ -55,7 +57,7 @@ class TtsBot {
     if (!this.guildStates.has(guildId)) {
       const player = createAudioPlayer({
         behaviors: {
-          noSubscriber: NoSubscriberBehavior.Pause,
+          noSubscriber: NoSubscriberBehavior.Play,
         },
       });
 
@@ -171,6 +173,11 @@ class TtsBot {
     );
 
     const state = this.#getGuildState(message.guildId);
+    const existingConnection = getVoiceConnection(message.guildId);
+    if (existingConnection) {
+      this.log(`Destroying existing voice connection in guild ${message.guildId} before rejoin. Current status: ${existingConnection.state.status}`);
+      existingConnection.destroy();
+    }
 
     const connection = joinVoiceChannel({
       channelId: voiceChannel.id,
@@ -179,8 +186,26 @@ class TtsBot {
       selfDeaf: false,
     });
 
-    connection.on("stateChange", (oldState, newState) => {
+    connection.on("stateChange", async (oldState, newState) => {
       this.log(`Voice connection state change in guild ${message.guildId}: ${oldState.status} -> ${newState.status}`);
+
+      if (newState.status === VoiceConnectionStatus.Disconnected) {
+        try {
+          if (connection.state.reason === VoiceConnectionDisconnectReason.WebSocketClose && connection.state.closeCode === 4014) {
+            this.log(`Voice connection disconnected with close code 4014 in guild ${message.guildId}; waiting for reconnect.`);
+            await entersState(connection, VoiceConnectionStatus.Connecting, VOICE_RECONNECT_TIMEOUT_MS);
+          } else if (connection.rejoinAttempts < 5) {
+            this.log(`Attempting voice reconnection in guild ${message.guildId}; attempt ${connection.rejoinAttempts + 1}`);
+            await entersState(connection, VoiceConnectionStatus.Connecting, VOICE_RECONNECT_TIMEOUT_MS);
+          } else {
+            this.log(`Destroying voice connection in guild ${message.guildId} after repeated disconnects.`);
+            connection.destroy();
+          }
+        } catch (error) {
+          this.log(`Voice reconnection failed in guild ${message.guildId}: ${error.message}`);
+          connection.destroy();
+        }
+      }
     });
 
     connection.subscribe(state.player);
@@ -189,14 +214,13 @@ class TtsBot {
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, VOICE_CONNECTION_TIMEOUT_MS);
       this.log(`Voice connection ready for guild ${message.guildId}`);
+      this.#evaluateAutoDisconnect(message.guildId);
+      await message.reply(`Joined **${voiceChannel.name}**.`);
     } catch (error) {
       this.log(`Voice connection failed to become ready for guild ${message.guildId}: ${error.message}`);
+      connection.destroy();
+      await message.reply(`Joined **${voiceChannel.name}**, but the voice connection did not become ready.`);
     }
-
-    this.log(`Joined voice channel ${voiceChannel.id} in guild ${message.guildId}`);
-
-    this.#evaluateAutoDisconnect(message.guildId);
-    await message.reply(`Joined **${voiceChannel.name}**.`);
   }
 
   async #handleLeave(message) {
@@ -221,9 +245,15 @@ class TtsBot {
       return;
     }
 
-    const connection = getVoiceConnection(message.guildId);
+    let connection = getVoiceConnection(message.guildId);
     if (!connection) {
       await this.#handleJoin(message);
+      connection = getVoiceConnection(message.guildId);
+    }
+
+    if (!connection || connection.state.status !== VoiceConnectionStatus.Ready) {
+      await message.reply("Voice connection is not ready yet. Try again in a moment.");
+      return;
     }
 
     const state = this.#getGuildState(message.guildId);
@@ -275,6 +305,11 @@ class TtsBot {
     }
 
     this.log(`Current voice connection status in guild ${message.guildId}: ${connection.state.status}`);
+
+    if (connection.state.status !== VoiceConnectionStatus.Ready) {
+      await message.reply("Voice connection is not ready yet. Test audio was not played.");
+      return;
+    }
 
     const state = this.#getGuildState(message.guildId);
     const resource = createAudioResource(createReadStream(TEST_AUDIO_PATH), {
