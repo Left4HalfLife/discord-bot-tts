@@ -12,14 +12,20 @@ const {
 const { parseMentionCommand } = require("./commandParser");
 const { AudioCache } = require("./audioCache");
 const { DebugLog } = require("./debugLog");
+const { DEFAULT_VOICE, DEFAULT_SPEED, DEFAULT_LANG } = require("./apiClient");
 
 const DEBUG_LOG_LIMIT = 300;
 const AUTO_DISCONNECT_MS = 5 * 60 * 1000;
+const MIN_SPEED = 0.25;
+const MAX_SPEED = 4.0;
 
 class TtsBot {
-  constructor({ client, apiClient }) {
+  constructor({ client, apiClient, defaultVoice = DEFAULT_VOICE, defaultSpeed = DEFAULT_SPEED, defaultLang = DEFAULT_LANG }) {
     this.client = client;
     this.apiClient = apiClient;
+    this.defaultVoice = defaultVoice;
+    this.defaultSpeed = defaultSpeed;
+    this.defaultLang = defaultLang;
     this.guildStates = new Map();
     this.cache = new AudioCache(32);
     this.debugLog = new DebugLog(DEBUG_LOG_LIMIT);
@@ -31,12 +37,6 @@ class TtsBot {
 
   async #onReady() {
     this.log(`Logged in as ${this.client.user.tag}`);
-
-    try {
-      await this.apiClient.authenticate();
-    } catch (error) {
-      this.log(`API authentication failed on startup: ${error.message}`);
-    }
   }
 
   log(message) {
@@ -57,6 +57,9 @@ class TtsBot {
         player,
         queue: [],
         disconnectTimer: null,
+        voice: this.defaultVoice,
+        speed: this.defaultSpeed,
+        lang: this.defaultLang,
       };
 
       player.on(AudioPlayerStatus.Idle, () => {
@@ -105,6 +108,21 @@ class TtsBot {
         break;
       case "history":
         await this.#handleHistory(message);
+        break;
+      case "voice":
+        await this.#handleVoice(message, args);
+        break;
+      case "speed":
+        await this.#handleSpeed(message, args);
+        break;
+      case "lang":
+        await this.#handleLang(message, args);
+        break;
+      case "voices":
+        await this.#handleVoices(message);
+        break;
+      case "settings":
+        await this.#handleSettings(message);
         break;
       case "debug":
         await this.#handleDebug(message);
@@ -175,16 +193,18 @@ class TtsBot {
     }
 
     const state = this.#getGuildState(message.guildId);
+    const { voice, speed, lang } = state;
+    const cacheKey = `${text}\x00${voice}\x00${speed}\x00${lang}`;
 
     try {
-      let audioBuffer = this.cache.get(text);
+      let audioBuffer = this.cache.get(cacheKey);
 
       if (audioBuffer) {
         this.log(`Cache hit for text in guild ${message.guildId}`);
       } else {
         this.log(`Cache miss for text in guild ${message.guildId}`);
-        audioBuffer = await this.apiClient.synthesize(text);
-        this.cache.set(text, audioBuffer);
+        audioBuffer = await this.apiClient.synthesize(text, { voice, speed, lang });
+        this.cache.set(cacheKey, audioBuffer);
       }
 
       state.queue.push({ text, audioBuffer });
@@ -223,6 +243,88 @@ class TtsBot {
     state.player.stop(true);
     this.log(`Cleared queue in guild ${message.guildId}`);
     await message.reply("Queue cleared.");
+  }
+
+  async #handleVoice(message, args) {
+    const voiceName = args.trim();
+    if (!voiceName) {
+      const state = this.#getGuildState(message.guildId);
+      await message.reply(`Current voice: **${state.voice}**. Usage: @bot !voice <name>`);
+      return;
+    }
+
+    const state = this.#getGuildState(message.guildId);
+    state.voice = voiceName;
+    this.log(`Set voice to ${voiceName} in guild ${message.guildId}`);
+    await message.reply(`Voice set to **${voiceName}**.`);
+  }
+
+  async #handleSpeed(message, args) {
+    const raw = args.trim();
+    if (!raw) {
+      const state = this.#getGuildState(message.guildId);
+      await message.reply(`Current speed: **${state.speed}**. Usage: @bot !speed <${MIN_SPEED}-${MAX_SPEED}>`);
+      return;
+    }
+
+    const speed = parseFloat(raw);
+    if (isNaN(speed) || speed < MIN_SPEED || speed > MAX_SPEED) {
+      await message.reply(`Speed must be a number between ${MIN_SPEED} and ${MAX_SPEED}.`);
+      return;
+    }
+
+    const state = this.#getGuildState(message.guildId);
+    state.speed = speed;
+    this.log(`Set speed to ${speed} in guild ${message.guildId}`);
+    await message.reply(`Speed set to **${speed}**.`);
+  }
+
+  async #handleLang(message, args) {
+    const lang = args.trim();
+    if (!lang) {
+      const state = this.#getGuildState(message.guildId);
+      await message.reply(`Current language: **${state.lang}**. Usage: @bot !lang <auto|a|b|j|z|...>`);
+      return;
+    }
+
+    const state = this.#getGuildState(message.guildId);
+    state.lang = lang;
+    this.log(`Set lang to ${lang} in guild ${message.guildId}`);
+    await message.reply(`Language set to **${lang}**.`);
+  }
+
+  async #handleVoices(message) {
+    try {
+      const voices = await this.apiClient.listVoices();
+      if (voices.length === 0) {
+        await message.reply("No voices available.");
+        return;
+      }
+
+      const text = voices.join(", ");
+      const maxLength = 1900;
+      if (text.length <= maxLength) {
+        await message.reply(`Available voices:\n${text}`);
+      } else {
+        const truncated = text.slice(0, maxLength);
+        const lastComma = truncated.lastIndexOf(",");
+        const safe = lastComma > 0 ? truncated.slice(0, lastComma) : truncated;
+        await message.reply(`Available voices (truncated):\n${safe}…`);
+      }
+    } catch (error) {
+      this.log(`Failed to list voices: ${error.message}`);
+      await message.reply(`Failed to retrieve voices: ${error.message}`);
+    }
+  }
+
+  async #handleSettings(message) {
+    const state = this.#getGuildState(message.guildId);
+    await message.reply(
+      `Current settings:\n` +
+      `• Voice: **${state.voice}**\n` +
+      `• Speed: **${state.speed}**\n` +
+      `• Language: **${state.lang}**`
+    );
   }
 
   async #handleHistory(message) {
