@@ -3,7 +3,6 @@ const { ApiClient } = require("../src/apiClient");
 const logger = () => {};
 
 function mockFetch(status, body, { isJson = true } = {}) {
-  const textBody = typeof body === "string" ? body : JSON.stringify(body);
   global.fetch = jest.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
@@ -11,7 +10,7 @@ function mockFetch(status, body, { isJson = true } = {}) {
       get: (name) => (name.toLowerCase() === "content-type" ? (isJson ? "application/json" : "text/plain") : null),
     },
     json: isJson ? () => Promise.resolve(body) : undefined,
-    text: () => Promise.resolve(textBody),
+    text: () => Promise.resolve(typeof body === "string" ? body : JSON.stringify(body)),
     arrayBuffer: !isJson ? () => Promise.resolve(body) : undefined,
   });
 }
