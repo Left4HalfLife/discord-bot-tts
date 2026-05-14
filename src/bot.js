@@ -121,6 +121,9 @@ class TtsBot {
       case "voices":
         await this.#handleVoices(message);
         break;
+      case "endpoint":
+        await this.#handleEndpoint(message, args);
+        break;
       case "settings":
         await this.#handleSettings(message);
         break;
@@ -216,8 +219,9 @@ class TtsBot {
 
       await message.reply(`Queued. Position: ${state.queue.length}`);
     } catch (error) {
-      this.log(`Failed to synthesize text: ${error.message}`);
-      await message.reply(`Failed to synthesize speech: ${error.message}`);
+      const endpoint = this.apiClient.getEndpoint();
+      this.log(`Failed to synthesize text in guild ${message.guildId} via ${endpoint}: ${error.message}`);
+      await message.reply(`Failed to synthesize speech via **${endpoint}**: ${error.message}`);
     }
   }
 
@@ -312,8 +316,47 @@ class TtsBot {
         await message.reply(`Available voices (truncated):\n${safe}…`);
       }
     } catch (error) {
-      this.log(`Failed to list voices: ${error.message}`);
-      await message.reply(`Failed to retrieve voices: ${error.message}`);
+      const endpoint = this.apiClient.getEndpoint();
+      this.log(`Failed to list voices via ${endpoint}: ${error.message}`);
+      await message.reply(`Failed to retrieve voices from **${endpoint}**: ${error.message}`);
+    }
+  }
+
+  async #handleEndpoint(message, args) {
+    const raw = args.trim();
+    if (!raw) {
+      await message.reply(`Current API endpoint: **${this.apiClient.getEndpoint()}**. Usage: @bot !endpoint <url>|test`);
+      return;
+    }
+
+    if (raw.toLowerCase() === "test") {
+      await this.#replyEndpointCheck(message, false);
+      return;
+    }
+
+    let endpoint;
+    try {
+      endpoint = this.apiClient.setEndpoint(raw);
+    } catch (error) {
+      await message.reply(`Invalid API endpoint: ${error.message}`);
+      return;
+    }
+
+    this.log(`Set API endpoint to ${endpoint} in guild ${message.guildId}`);
+    await this.#replyEndpointCheck(message, true);
+  }
+
+  async #replyEndpointCheck(message, changed) {
+    try {
+      const result = await this.apiClient.testConnection();
+      this.log(`API connection successful in guild ${message.guildId}: ${result.endpoint}`);
+      const prefix = changed ? "API endpoint updated to" : "API endpoint";
+      await message.reply(`${prefix} **${result.endpoint}**. Connection successful (${result.voicesCount} voices available).`);
+    } catch (error) {
+      const endpoint = this.apiClient.getEndpoint();
+      this.log(`API connection check failed in guild ${message.guildId} via ${endpoint}: ${error.message}`);
+      const prefix = changed ? "API endpoint updated to" : "API endpoint";
+      await message.reply(`${prefix} **${endpoint}**, but the connection test failed: ${error.message}`);
     }
   }
 
@@ -321,6 +364,7 @@ class TtsBot {
     const state = this.#getGuildState(message.guildId);
     await message.reply(
       `Current settings:\n` +
+      `• API endpoint: **${this.apiClient.getEndpoint()}**\n` +
       `• Voice: **${state.voice}**\n` +
       `• Speed: **${state.speed}**\n` +
       `• Language: **${state.lang}**`

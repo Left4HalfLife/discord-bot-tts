@@ -13,13 +13,15 @@ Mention the bot and run:
 - `@bot !speed [value]` — set (or show) the speech speed for this server (0.25–4.0, default 1.0).
 - `@bot !lang [code]` — set (or show) the language for this server (`auto`, `a`=American English, `b`=British English, `j`=Japanese, `z`=Chinese — see [Kokoro-FastAPI docs](https://github.com/remsky/Kokoro-FastAPI) for the full list).
 - `@bot !voices` — list all voices available from the Kokoro-FastAPI server.
-- `@bot !settings` — show current voice, speed, and language for this server.
+- `@bot !endpoint [url|test]` — show the current API endpoint, update it at runtime, or test connectivity.
+- `@bot !settings` — show current API endpoint, voice, speed, and language for this server.
 - `@bot !queue` — show queued items (first 20 chars each).
 - `@bot !clear` — clear queue and stop playback.
 - `@bot !history` — show last 32 cached items.
 - `@bot !debug` — show recent debug logs.
 
 Voice, speed, and language settings are per-server and reset to defaults when the bot restarts.
+The API endpoint starts from `API_ENDPOINT` and can be changed at runtime with `@bot !endpoint`.
 
 If a voice channel becomes empty (no non-bot users), the bot auto-disconnects after 5 minutes.
 
@@ -66,4 +68,3 @@ npm start
 docker build -t discord-bot-tts .
 docker run --env-file .env discord-bot-tts
 ```
-
