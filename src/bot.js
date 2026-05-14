@@ -194,7 +194,7 @@ class TtsBot {
 
     const state = this.#getGuildState(message.guildId);
     const { voice, speed, lang } = state;
-    const cacheKey = `${text}|${voice}|${speed}|${lang}`;
+    const cacheKey = `${text}\x00${voice}\x00${speed}\x00${lang}`;
 
     try {
       let audioBuffer = this.cache.get(cacheKey);
@@ -306,7 +306,10 @@ class TtsBot {
       if (text.length <= maxLength) {
         await message.reply(`Available voices:\n${text}`);
       } else {
-        await message.reply(`Available voices (truncated):\n${text.slice(0, maxLength)}…`);
+        const truncated = text.slice(0, maxLength);
+        const lastComma = truncated.lastIndexOf(",");
+        const safe = lastComma > 0 ? truncated.slice(0, lastComma) : truncated;
+        await message.reply(`Available voices (truncated):\n${safe}…`);
       }
     } catch (error) {
       this.log(`Failed to list voices: ${error.message}`);

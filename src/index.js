@@ -10,8 +10,6 @@ if (!DISCORD_TOKEN || !API_ENDPOINT) {
   throw new Error("Missing required env vars: DISCORD_TOKEN, API_ENDPOINT");
 }
 
-const defaultSpeed = TTS_SPEED ? parseFloat(TTS_SPEED) : DEFAULT_SPEED;
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -29,7 +27,7 @@ const bot = new TtsBot({
     logger: (message) => bot.log(message),
   }),
   defaultVoice: TTS_VOICE || DEFAULT_VOICE,
-  defaultSpeed: isNaN(defaultSpeed) ? DEFAULT_SPEED : defaultSpeed,
+  defaultSpeed: TTS_SPEED ? (parseFloat(TTS_SPEED) || DEFAULT_SPEED) : DEFAULT_SPEED,
   defaultLang: TTS_LANG || DEFAULT_LANG,
 });
 

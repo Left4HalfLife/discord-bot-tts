@@ -11,7 +11,7 @@ Mention the bot and run:
 - `@bot !say <text>` — queue TTS (`text` max 2000 chars).
 - `@bot !voice [name]` — set (or show) the voice for this server (e.g. `af_bella`, `bm_lewis`).
 - `@bot !speed [value]` — set (or show) the speech speed for this server (0.25–4.0, default 1.0).
-- `@bot !lang [code]` — set (or show) the language for this server (`auto`, `a`=American English, `b`=British English, `j`=Japanese, `z`=Chinese).
+- `@bot !lang [code]` — set (or show) the language for this server (`auto`, `a`=American English, `b`=British English, `j`=Japanese, `z`=Chinese — see [Kokoro-FastAPI docs](https://github.com/remsky/Kokoro-FastAPI) for the full list).
 - `@bot !voices` — list all voices available from the Kokoro-FastAPI server.
 - `@bot !settings` — show current voice, speed, and language for this server.
 - `@bot !queue` — show queued items (first 20 chars each).

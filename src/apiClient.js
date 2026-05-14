@@ -5,6 +5,7 @@ const DEFAULT_LANG = "auto";
 class ApiClient {
   constructor({ endpoint, apiKey, logger }) {
     this.baseUrl = endpoint.replace(/\/$/, "");
+    // "not-needed" is Kokoro-FastAPI's conventional placeholder for unauthenticated local setups
     this.apiKey = apiKey || "not-needed";
     this.logger = logger;
   }
