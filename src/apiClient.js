@@ -155,7 +155,7 @@ class ApiClient {
       parts.push(error.message);
     }
 
-    return parts.filter((part, index) => parts.indexOf(part) === index).join(" - ");
+    return [...new Set(parts)].join(" - ");
   }
 
   #capitalize(text) {
